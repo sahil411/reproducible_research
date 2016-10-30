@@ -1,0 +1,155 @@
+---
+title: "Analysing USA NOAA storm dataset for predictions"
+author: "sahil jagdale"
+date: "August 21, 2016"
+output: html_document
+---
+# Introduction:
+  The given report is about the analysis done on the dataset of U.S. National Oceanic and Atmospheric Administration's(NOAA) storm dataset.This database tracks the major storm and weather conditions and events occured in United States and tells about the estimated fatalities,injuries and property damage as well as the crop damage as per economic perspective.We will examine the extreem events occured in terms of public health and economic perspective.
+  
+# Synopsis:
+  After analysing the NOAA Storm dataset ranges from the year 1950 - 2011 we got to know that as per public health tornado is the most dangerous weather event and as per economic impact the falsh flood is the most severe one. 
+
+Before loading the data we have to load some libraries.
+
+```{r}
+# Load required libraries.  Set Warning=False and Message=False to hide the
+# verbose messages printed while importing libraries
+library("ggplot2")
+library("grid")
+library("utils")
+library("plyr")
+
+```
+# Data Processing:
+## i) Loading the dataset:
+    
+```{r}
+ data_filename <- "repdata_data_StormData.csv.bz2"
+  
+  if (!file.exists(data_filename)){
+    fileURL <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2"
+    download.file(fileURL, data_filename)
+  }  
+
+  if (!exists('stormData')) {
+  stormData <- read.csv("repdata_data_StormData.csv.bz2", stringsAsFactors = FALSE)
+  }
+
+```
+summarized data is as follows.
+
+```{r}
+  summary(stormData)
+```
+## ii) Trimming the dataset:
+    we have to trim the datasets for our questions to be precisely answered.
+```{r}
+# Trim the data set to required columns only
+stormEvent <- stormData[, c("BGN_DATE", "EVTYPE", "FATALITIES", "INJURIES", 
+                            "PROPDMG", "PROPDMGEXP", "CROPDMG", "CROPDMGEXP")]
+
+# Create subset for Question 1 and Question 2
+
+# Select data for Fatalities and injuries for Question 1
+eventHealth <- subset(stormEvent, !stormEvent$FATALITIES == 0 & !stormEvent$INJURIES == 
+                        0, select = c(EVTYPE, FATALITIES, INJURIES))
+
+# Select data for Property Damage and Crop Damage for Question 2
+eventEconomic <- subset(stormEvent, !stormEvent$PROPDMG == 0 & !stormEvent$CROPDMG == 
+                          0, select = c(EVTYPE, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP))
+
+```
+
+# Question 1.Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
+
+the following code chunk will produce the event which are hazardous to population health.
+
+```{r}
+# Create separate data set for Injury and Fatalities Fatalities
+eventHealth_Death <- aggregate(eventHealth$FATALITIES, by = list(eventHealth$EVTYPE), 
+                               FUN = sum)
+# Give proper name for columns
+colnames(eventHealth_Death) <- c("EVENTTYPE", "FATALITIES")
+
+# Injury
+eventHealth_Inj <- aggregate(eventHealth$INJURIES, by = list(eventHealth$EVTYPE), 
+                             FUN = sum)
+# Give column name
+colnames(eventHealth_Inj) <- c("EVENTTYPE", "INJURIES")
+
+# Let's reorder 2 dataset and filter top 5 events for both dataset
+eventHealth_Death <- eventHealth_Death[order(eventHealth_Death$FATALITIES, decreasing = TRUE), 
+                                       ][1:5, ]
+
+eventHealth_Inj <- eventHealth_Inj[order(eventHealth_Inj$INJURIES, decreasing = TRUE), 
+                                   ][1:5, ]
+
+
+```
+
+now we will create a plot on basis of these top 5 fatalities and injuries.
+
+```{r}
+
+  # plot top 5 events for fatalities and injuries
+
+# Plot Fatalities and store at Death_plot
+Death_plot <- ggplot() + geom_bar(data = eventHealth_Death, 
+                                  aes(x = EVENTTYPE, y = FATALITIES, 
+                                      fill = interaction(FATALITIES, EVENTTYPE)), 
+                                  stat = "identity", 
+                                  show.legend = F) + 
+                                  xlab("Harmful Events") + 
+                                  ylab("No. of fatailities") +   
+                                  ggtitle("Top 5 weather events causing fatalities")
+
+# Plot injuries and store at variable Inj_plot
+Inj_plot <- ggplot() + geom_bar(data = eventHealth_Inj, 
+                                  aes(x = EVENTTYPE, y = INJURIES, 
+                                      fill = interaction(INJURIES, EVENTTYPE)), 
+                                  stat = "identity", 
+                                  show.legend = F) + 
+                                  xlab("Harmful Events") + 
+                                  ylab("No. of injuries") +   
+                                  ggtitle("Top 5 weather events causing injuries")
+
+Death_plot
+Inj_plot
+```
+
+### From the plots shown above we can see tha tornado is the main cause for population health.
+
+According to the documentation (page 12), the PROPDMG and CROPDMG variables are encoded by PROPDMGEXP and CROPDMGEXP variables, respectively. They represent magnitude values, including "H" for hundreds, "K" for thousands, "M"" for millions and "B" for billions. In order to decode PROPDMG and CROPDMG, I created new numeric variables.
+
+```{r}
+  stormData$PROPMULT <- 1
+  stormData$PROPMULT[stormData$PROPDMGEXP =="H"] <- 100
+  stormData$PROPMULT[stormData$PROPDMGEXP =="K"] <- 1000
+  stormData$PROPMULT[stormData$PROPDMGEXP =="M"] <- 1000000
+  stormData$PROPMULT[stormData$PROPDMGEXP =="B"] <- 1000000000
+
+  stormData$CROPMULT <- 1
+  stormData$CROPMULT[stormData$CROPDMGEXP =="H"] <- 100
+  stormData$CROPMULT[stormData$CROPDMGEXP =="K"] <- 1000
+  stormData$CROPMULT[stormData$CROPDMGEXP =="M"] <- 1000000
+  stormData$CROPMULT[stormData$CROPDMGEXP =="B"] <- 1000000000
+```
+# Question 2. Across the United States, which types of events have the greatest economic consequences?
+
+### Result 
+```{r}
+aggregate_data <- ddply(.data = stormData, .variables = .(EVTYPE), property_damage = sum(PROPDMG * PROPMULT), crop_damage = sum(CROPDMG * CROPMULT), summarize)
+
+damage_data <- arrange(aggregate_data, desc(property_damage + crop_damage))
+```
+
+lets plot the graph to see which event cause the most economic impact
+
+```{r}
+ ggplot(data = head(damage_data, 15), aes(x = factor(EVTYPE), y = (property_damage + crop_damage), fill = EVTYPE)) + geom_bar(stat="identity") + coord_flip() + labs(y = "Property and crop damage", x = "Event type", title = "Property and crop damage by event type accross the US")
+
+```
+#Summary:
+
+  From these data and grpahs, we found that Tornado are most harmful with respect to population health, while Flood have the greatest economic consequences.
